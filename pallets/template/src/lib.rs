@@ -41,6 +41,8 @@ decl_event!(
         ClaimCreated(AccountId, Vec<u8>),
         /// Event emitted when a claim is revoked by the owner. [who, claim]
         ClaimRevoked(AccountId, Vec<u8>),
+        /// Event emitted when a claim is moved to new owner by the owner. [owner, new owner, claim]
+        MoveRevoked(AccountId, AccountId, Vec<u8>),
 	}
 );
 
@@ -110,6 +112,30 @@ decl_module! {
 
             // Emit an event that the claim was erased.
             Self::deposit_event(RawEvent::ClaimRevoked(sender, proof));
+        }
+
+        #[weight = 10_000]
+        fn move_claim(origin, new_owner: T::AccountId, proof: Vec<u8>){
+        	// Check that the extrinsic was signed and get the signer.
+        	let sender = ensure_signed(origin)?;
+
+        	// Verify that the specified proof has been claimed.
+        	ensure!(Proofs::<T>::contains_key(&proof), Error::<T>::NoSuchProof);
+
+			// Get owner of the claim.
+			let (owner, _) = Proofs::<T>::get(&proof);
+
+			// Verify that sender of the current call is the claim owner.
+			ensure!(sender == owner, Error::<T>::NotProofOwner);
+
+			// Get the block number from the FRAME System module.
+            let current_block = <frame_system::Module<T>>::block_number();
+
+            // Store the proof with the sender and block number.
+            Proofs::<T>::insert(&proof, (&new_owner, current_block));
+
+			// Emit an event that the claim was moved.
+            Self::deposit_event(RawEvent::MoveRevoked(sender, new_owner, proof));
         }
 	}
 }
